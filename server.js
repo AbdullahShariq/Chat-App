@@ -3,14 +3,23 @@ const fastify = Fastify({ logger: true });
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const http = require("http");
-const server = http.createServer(fastify.server);
+// Problem Solving Line code 
+const server = http.createServer((req, res) => {
+  fastify.routing(req, res);
+});
 const io = require("socket.io")(server, { cors: { origin: "*" } });
 
 // Parse JSON and handle CORS
-fastify.register(require("@fastify/cors"));
+// This tells the server to accept requests from ANYWHERE
+fastify.register(require("@fastify/cors"), { 
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"], // Added OPTIONS for the browser's secret check
+  allowedHeaders: ["Content-Type"]
+});
 fastify.register(require("@fastify/formbody"));
 
-// --- Routes ---
+
+// Routes
 
 // Get all users
 fastify.get("/users", async (req, reply) => {
@@ -18,13 +27,32 @@ fastify.get("/users", async (req, reply) => {
   reply.send(users);
 });
 
-// Create a new user
+// Create a new user (with error handling)
 fastify.post("/users", async (req, reply) => {
-  const { username, email, password } = req.body;
-  const user = await prisma.user.create({
-    data: { username, email, password },
-  });
-  reply.send(user);
+  try {
+    // THIS LINE IS THE KEY:
+    console.log("Incoming Registration Data:", req.body); 
+
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+      console.log("Validation failed: Missing fields");
+      return reply.code(400).send({ message: "Missing required fields" });
+    }
+
+    const user = await prisma.user.create({
+      data: { username, email, password },
+    });
+    
+    console.log("User created in DB:", user.username);
+    reply.send(user);
+  } catch (err) {
+    console.error("Prisma Error:", err);
+    if (err.code === 'P2002') {
+      return reply.code(409).send({ message: "Username or Email already exists" });
+    }
+    reply.code(500).send({ message: "Internal Server Error" });
+  }
 });
 
 // Get all messages
@@ -35,68 +63,108 @@ fastify.get("/messages", async (req, reply) => {
   reply.send(messages);
 });
 
-// --- Start server ---
+// Start server
+
+//Running Socket.io 
+
+// const start = async () => {
+//   try {
+//     await fastify.ready();
+//     // Use 0.0.0.0 to allow Docker, but ensure your terminal says it's alive
+//     server.listen(3000, "0.0.0.0", (err, address) => {
+//       if (err) {
+//         console.error(err);
+//         process.exit(1);
+//       }
+//       console.log(` Server is definitely running at: ${address}`);
+//     });
+//   } catch (err) {
+//     fastify.log.error(err);
+//     process.exit(1);
+//   }
+// };
+
+//Running Fastify Routes
+
+// const start = async () => {
+//   try {
+//     await fastify.ready();
+//     // Start listening on the FASTIFY instance directly to ensure routes are active
+//     await fastify.listen({ port: 3000, host: "0.0.0.0" }); 
+    
+//     // Then attach your Socket.io to that same port
+//     console.log(" Server is now listening on Port 3000");
+//   } catch (err) {
+//     fastify.log.error(err);
+//     process.exit(1);
+//   }
+// };
+
+// start();
+
+// Start Server
+
 const start = async () => {
   try {
+    // 1. Important: Wait for Fastify to prepare all its routes (/users, /messages)
     await fastify.ready();
-
-    server.listen(3000, () => {
-      console.log("Server + Socket.IO running at http://localhost:3000");
+    
+    // 2. Start the SHARED server (the 'server' variable you created at the top)
+    // This 'server' contains both Fastify and Socket.io
+    server.listen(3000, "0.0.0.0", () => {
+      console.log("SUCCESS! Everything is running on Port 3000");
+    //   console.log("Routes like /users are active");
+    //   console.log("Socket.io is active");
     });
+
   } catch (err) {
-    fastify.log.error(err);
+    console.error("Error starting server:", err);
     process.exit(1);
   }
 };
 
 start();
 
-// --- Socket.io real-time chat ---
-io.on("connection", (socket) => {
-  console.log("A user connected: " + socket.id);
 
-  // Listen for sending message
-  socket.on("sendMessage", async (data) => {
-    // data = { senderId, receiverId, text }
 
-    try {
-      // Check if sender exists
-      const sender = await prisma.user.findUnique({
-        where: { id: data.senderId },
-      });
-      if (!sender) {
-        socket.emit("errorMessage", { message: "Sender does not exist!" });
-        return;
-      }
+//Existing imports and routes
 
-      // Check if receiver exists
-      const receiver = await prisma.user.findUnique({
-        where: { id: data.receiverId },
-      });
-      if (!receiver) {
-        socket.emit("errorMessage", { message: "Receiver does not exist!" });
-        return;
-      }
+    io.on("connection", (socket) => {
+    console.log("User connected: " + socket.id);
 
-      // Create the message
-      const message = await prisma.message.create({
-        data: {
-          text: data.text,
-          senderId: data.senderId,
-          receiverId: data.receiverId,
-        },
-        include: { sender: true, receiver: true },
-      });
+    socket.on("sendMessage", async (data) => {
+        try {
+        // Find sender and receiver by username instead of ID
+        const [sender, receiver] = await Promise.all([
+            prisma.user.findUnique({ where: { username: data.senderName } }),
+            prisma.user.findUnique({ where: { username: data.receiverName } })
+        ]);
 
-      // Emit to all users
-      io.emit("newMessage", message);
-    } catch (err) {
-      console.error("Error sending message:", err.message);
-      socket.emit("errorMessage", { message: "Failed to send message." });
-    }
-  });
+        if (!sender || !receiver) {
+            socket.emit("errorMessage", { message: "One or both users not found!" });
+            return;
+        }
 
-  socket.on("disconnect", () => {
+        const message = await prisma.message.create({
+            data: {
+            text: data.text,
+            senderId: sender.id,   // Use the IDs found from the database
+            receiverId: receiver.id,
+            },
+            include: { sender: true, receiver: true },
+        });
+
+        io.emit("newMessage", message);
+        } catch (err) {
+        console.error(err);
+        socket.emit("errorMessage", { message: "Server error while sending." });
+        }
+    });
+
+    socket.on("disconnect", () => {
     console.log("User disconnected: " + socket.id);
-  });
+
+    });
+
 });
+

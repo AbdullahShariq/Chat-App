@@ -1,42 +1,100 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Basic Chat App</title>
+    <title>Chat App v2</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .section { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+        input { margin: 5px 0; display: block; padding: 8px; }
+    </style>
 </head>
 <body>
-  <h2>Basic Chat App</h2>
-  <input id="senderId" placeholder="Your User ID" />
-  <input id="receiverId" placeholder="Receiver User ID" />
-  <input id="msg" placeholder="Type your message" />
-  <button onclick="sendMessage()">Send</button>
+
+    <div class="section">
+  <h3>Step 1: Create a New User</h3>
+  <input id="regUser" placeholder="Username" />
+  <input id="regEmail" placeholder="Email" />
+  <input id="regPassword" type="password" placeholder="Password" /> 
+  <button onclick="register()">Create User</button>
+</div>
+
+  <div class="section">
+    <h3>Step 2: Chat by Username</h3>
+    <input id="senderName" placeholder="Your Username" />
+    <input id="receiverName" placeholder="Receiver Username" />
+    <input id="msg" placeholder="Message" />
+    <button onclick="sendMessage()">Send Message</button>
+  </div>
 
   <ul id="messages"></ul>
 
   <script src="https://cdn.socket.io/4.7.1/socket.io.min.js"></script>
   <script>
     const socket = io("http://localhost:3000");
-    const messagesList = document.getElementById("messages");
 
-    // Receive messages
+    // Handle incoming messages
     socket.on("newMessage", (msg) => {
       const li = document.createElement("li");
-      li.textContent = `${msg.sender.username} → ${msg.receiver.username}: ${msg.text}`;
-      messagesList.appendChild(li);
+      li.textContent = `${msg.sender.username}: ${msg.text}`;
+      document.getElementById("messages").appendChild(li);
     });
 
-    // Send messages
-    function sendMessage() {
-      const senderId = document.getElementById("senderId").value;
-      const receiverId = document.getElementById("receiverId").value;
-      const text = document.getElementById("msg").value;
-      socket.emit("sendMessage", { senderId, receiverId, text });
+    socket.on("errorMessage", (err) => alert(err.message));
+
+    // Registration Function
+    async function register() {
+    console.log("Entered reg function");
+
+    // 1. Get the values from the boxes
+    const u = document.getElementById("regUser").value;
+    const e = document.getElementById("regEmail").value;
+    const p = document.getElementById("regPassword").value;
+
+    // 2. Simple check
+    if (!u || !e || !p) {
+        alert("Please fill all three boxes!");
+        return;
     }
 
-    //Error Messages
-    socket.on("errorMessage", (data) => {
-    alert("Error: " + data.message);
-    });
-    
+    try {
+        console.log(" fetching now ");
+
+        // 3. Send the data to the server
+        const response = await fetch("http://127.0.0.1:3000/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                username: u, 
+                email: e, 
+                password: p 
+            })
+        });
+        console.log(" fetching worked perfectly ");
+
+        const result = await response.json();
+
+        if (response.ok) {
+            alert("User created: " + result.username);
+            // Clear the boxes
+            document.getElementById("regUser").value = "";
+            document.getElementById("regEmail").value = "";
+            document.getElementById("regPassword").value = "";
+        } else {
+            alert("Error: " + result.message);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Could not connect to server. Is your terminal running?");
+    }
+}
+
+    // Send Message Function
+    function sendMessage() {
+      const senderName = document.getElementById("senderName").value;
+      const receiverName = document.getElementById("receiverName").value;
+      const text = document.getElementById("msg").value;
+      socket.emit("sendMessage", { senderName, receiverName, text });
+    }
   </script>
 </body>
 </html>
