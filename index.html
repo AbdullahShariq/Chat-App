@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Basic Chat App</title>
+</head>
+<body>
+  <h2>Basic Chat App</h2>
+  <input id="senderId" placeholder="Your User ID" />
+  <input id="receiverId" placeholder="Receiver User ID" />
+  <input id="msg" placeholder="Type your message" />
+  <button onclick="sendMessage()">Send</button>
+
+  <ul id="messages"></ul>
+
+  <script src="https://cdn.socket.io/4.7.1/socket.io.min.js"></script>
+  <script>
+    const socket = io("http://localhost:3000");
+    const messagesList = document.getElementById("messages");
+
+    // Receive messages
+    socket.on("newMessage", (msg) => {
+      const li = document.createElement("li");
+      li.textContent = `${msg.sender.username} → ${msg.receiver.username}: ${msg.text}`;
+      messagesList.appendChild(li);
+    });
+
+    // Send messages
+    function sendMessage() {
+      const senderId = document.getElementById("senderId").value;
+      const receiverId = document.getElementById("receiverId").value;
+      const text = document.getElementById("msg").value;
+      socket.emit("sendMessage", { senderId, receiverId, text });
+    }
+
+    //Error Messages
+    socket.on("errorMessage", (data) => {
+    alert("Error: " + data.message);
+    });
+    
+  </script>
+</body>
+</html>

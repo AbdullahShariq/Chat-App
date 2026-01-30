@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Prisma
+.prisma/
+generated/prisma/
+
+# OS / Editor files
+.DS_Store
