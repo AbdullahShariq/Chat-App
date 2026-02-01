@@ -129,42 +129,101 @@ start();
 
 //Existing imports and routes
 
-    io.on("connection", (socket) => {
+//     io.on("connection", (socket) => {
+//     console.log("User connected: " + socket.id);
+
+//     socket.on("sendMessage", async (data) => {
+//         try {
+//         // Find sender and receiver by username instead of ID
+//         const [sender, receiver] = await Promise.all([
+//             prisma.user.findUnique({ where: { username: data.senderName } }),
+//             prisma.user.findUnique({ where: { username: data.receiverName } })
+//         ]);
+
+//         if (!sender || !receiver) {
+//             socket.emit("errorMessage", { message: "One or both users not found!" });
+//             return;
+//         }
+
+//         const message = await prisma.message.create({
+//             data: {
+//             text: data.text,
+//             senderId: sender.id,   // Use the IDs found from the database
+//             receiverId: receiver.id,
+//             },
+//             include: { sender: true, receiver: true },
+//         });
+
+//         io.emit("newMessage", message);
+//         } catch (err) {
+//         console.error(err);
+//         socket.emit("errorMessage", { message: "Server error while sending." });
+//         }
+//     });
+
+//     socket.on("disconnect", () => {
+//     console.log("User disconnected: " + socket.id);
+
+//     });
+
+// });
+
+// MAIN LOGIC (with Rooms)
+io.on("connection", (socket) => {
     console.log("User connected: " + socket.id);
 
+    // [ROOMS] - User enters a room
+    socket.on("joinRoom", (roomName) => {
+        socket.join(roomName);
+        console.log(`User ${socket.id} joined room: ${roomName}`);
+        
+        // [BROADCAST] - Send to everyone in room EXCEPT the sender
+        socket.to(roomName).emit("newMessage", {
+            sender: { username: "System" },
+            text: `Someone new just joined the ${roomName} chat!`
+        });
+    });
+
+    // [ROOMS] - Sending to a specific room
+    socket.on("sendToRoom", (data) => {
+        const { roomName, senderName, text } = data;
+        // io.to() sends to EVERYONE in the room including the sender
+        io.to(roomName).emit("newMessage", {
+            sender: { username: senderName },
+            text: `[ROOM: ${roomName}] ${text}`
+        });
+    });
+
+    // [GLOBAL] - Standard Private/Global Message
     socket.on("sendMessage", async (data) => {
         try {
-        // Find sender and receiver by username instead of ID
-        const [sender, receiver] = await Promise.all([
-            prisma.user.findUnique({ where: { username: data.senderName } }),
-            prisma.user.findUnique({ where: { username: data.receiverName } })
-        ]);
+            const [sender, receiver] = await Promise.all([
+                prisma.user.findUnique({ where: { username: data.senderName } }),
+                prisma.user.findUnique({ where: { username: data.receiverName } })
+            ]);
 
-        if (!sender || !receiver) {
-            socket.emit("errorMessage", { message: "One or both users not found!" });
-            return;
-        }
+            if (!sender || !receiver) {
+                socket.emit("errorMessage", { message: "User not found!" });
+                return;
+            }
 
-        const message = await prisma.message.create({
-            data: {
-            text: data.text,
-            senderId: sender.id,   // Use the IDs found from the database
-            receiverId: receiver.id,
-            },
-            include: { sender: true, receiver: true },
-        });
+            const message = await prisma.message.create({
+                data: { text: data.text, senderId: sender.id, receiverId: receiver.id },
+                include: { sender: true, receiver: true },
+            });
 
-        io.emit("newMessage", message);
+            // io.emit sends to everyone connected to the server
+            io.emit("newMessage", message);
+
+            // [BROADCAST] - Send a generic alert to everyone else
+            socket.broadcast.emit("notification", `New activity in the global chat!`);
+
         } catch (err) {
-        console.error(err);
-        socket.emit("errorMessage", { message: "Server error while sending." });
+            console.error(err);
         }
     });
 
     socket.on("disconnect", () => {
-    console.log("User disconnected: " + socket.id);
-
+        console.log("User disconnected: " + socket.id);
     });
-
 });
-

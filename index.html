@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chat App v2</title>
+    <title>Chat App</title>
     <style>
         body { font-family: sans-serif; padding: 20px; }
         .section { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
@@ -9,8 +9,7 @@
     </style>
 </head>
 <body>
-
-    <div class="section">
+<div class="section">
   <h3>Step 1: Create a New User</h3>
   <input id="regUser" placeholder="Username" />
   <input id="regEmail" placeholder="Email" />
@@ -25,6 +24,16 @@
     <input id="msg" placeholder="Message" />
     <button onclick="sendMessage()">Send Message</button>
   </div>
+
+  <div class="section" style="background: #eef;">
+    <h3>Step 3: Rooms (Group Chat)</h3>
+    <input id="roomName" placeholder="Room Name (e.g., Coding)" />
+    <button onclick="joinRoom()">Join Room</button>
+    <br>
+    <input id="roomMsg" placeholder="Message to Room" />
+    <button onclick="sendToRoom()">Send to Room</button>
+</div>
+
 
   <ul id="messages"></ul>
 
@@ -95,6 +104,26 @@
       const text = document.getElementById("msg").value;
       socket.emit("sendMessage", { senderName, receiverName, text });
     }
+
+    // Add these new functions at the bottom of your script
+function joinRoom() {
+    const room = document.getElementById("roomName").value;
+    socket.emit("joinRoom", room);
+    alert("You joined room: " + room);
+}
+
+function sendToRoom() {
+    const roomName = document.getElementById("roomName").value;
+    const senderName = document.getElementById("senderName").value; // Reuse senderName from Step 2
+    const text = document.getElementById("roomMsg").value;
+    socket.emit("sendToRoom", { roomName, senderName, text });
+}
+
+
+// Add this to listen for the broadast notification
+socket.on("notification", (note) => {
+    console.log("Global Notification:", note);
+});
   </script>
 </body>
 </html>
